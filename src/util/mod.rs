@@ -22,6 +22,7 @@ pub(crate) const SUCCESS_CODE: i32 = 0;
 // - Python's `argparse` returns 2
 pub(crate) const USAGE_CODE: i32 = 2;
 
+#[cfg(not(feature = "ios_system"))]
 pub(crate) fn safe_exit(code: i32) -> ! {
     use std::io::Write;
 
@@ -29,6 +30,33 @@ pub(crate) fn safe_exit(code: i32) -> ! {
     let _ = std::io::stderr().lock().flush();
 
     std::process::exit(code)
+}
+
+#[cfg(feature = "ios_system")]
+pub(crate) fn safe_exit(code: i32) -> ! {
+    #[link(name = "ios_system", kind = "framework")]
+    extern "C" {
+        fn ios_exit(code: i32) -> !;
+        fn ios_stdoutFd() -> i32;
+        fn ios_stderrFd() -> i32;
+    }
+    use std::fs::File;
+    use std::io::Write;
+    use std::os::unix::io::FromRawFd;
+
+    unsafe {
+        let fd = ios_stdoutFd();
+        if fd > 0 {
+            _ = File::from_raw_fd(fd).flush();
+        }
+
+        let fd = ios_stderrFd();
+        if fd > 0 {
+            _ = File::from_raw_fd(fd).flush();
+        }
+
+        ios_exit(code)
+    }
 }
 
 #[cfg(not(feature = "unicode"))]

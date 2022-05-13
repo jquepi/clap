@@ -16,7 +16,8 @@
     trivial_numeric_casts,
     clippy::single_char_pattern
 )]
-#![forbid(unsafe_code)]
+// #![cfg(not(feature = "ios_system"))]
+// #![forbid(unsafe_code)]
 // HACK https://github.com/rust-lang/rust-clippy/issues/7290
 #![allow(clippy::single_component_path_imports)]
 #![allow(clippy::branches_sharing_code)]

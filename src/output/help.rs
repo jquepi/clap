@@ -1,6 +1,7 @@
 // Std
 use std::borrow::Cow;
 use std::cmp;
+use std::ffi::CStr;
 use std::fmt::Write as _;
 use std::io::{self, Write};
 use std::usize;
@@ -1112,8 +1113,29 @@ pub(crate) fn dimensions() -> Option<(usize, usize)> {
     #[cfg(not(feature = "wrap_help"))]
     return None;
 
-    #[cfg(feature = "wrap_help")]
-    terminal_size::terminal_size().map(|(w, h)| (w.0.into(), h.0.into()))
+    #[cfg(all(feature = "wrap_help", not(feature = "ios_system")))]
+    return terminal_size::terminal_size().map(|(w, h)| (w.0.into(), h.0.into()));
+
+    #[cfg(all(feature = "wrap_help", feature = "ios_system"))]
+    extern "C" {
+        fn ios_getenv(name: *const u8) -> *const u8;
+    }
+    #[cfg(all(feature = "wrap_help", feature = "ios_system"))]
+    {
+        let columns = unsafe { ios_getenv(b"COLUMNS\n".as_ptr()) };
+        if columns.is_null() {
+            return None
+        }
+        let str = unsafe { CStr::from_ptr(columns as _) };
+        if let Ok(str) = str.to_str() {
+            if let Ok(columns) = str.parse::<usize>() {
+                return Some((columns, 0))
+            }
+        }
+        
+        None
+    }
+    // terminal_size::terminal_size().map(|(w, h)| (w.0.into(), h.0.into()))
 }
 
 const TAB: &str = "    ";

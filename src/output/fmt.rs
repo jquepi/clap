@@ -58,7 +58,7 @@ impl Colorizer {
 
 /// Printing methods.
 impl Colorizer {
-    #[cfg(feature = "color")]
+    #[cfg(all(feature = "color", not(feature = "ios_system")))]
     pub(crate) fn print(&self) -> io::Result<()> {
         use termcolor::{BufferWriter, ColorChoice as DepColorChoice, ColorSpec, WriteColor};
 
@@ -102,7 +102,59 @@ impl Colorizer {
         writer.print(&buffer)
     }
 
-    #[cfg(not(feature = "color"))]
+    #[cfg(all(feature = "color", feature = "ios_system"))]
+    pub(crate) fn print(&self) -> io::Result<()> {
+        use termcolor::{BufferWriter, ColorChoice as DepColorChoice, ColorSpec, WriteColor};
+        #[link(name = "ios_system", kind = "framework")]
+        extern "C" {
+            fn ios_stdoutFd() -> i32;
+            fn ios_stderrFd() -> i32;
+        }
+
+        let color_when = match self.color_when {
+            ColorChoice::Always => DepColorChoice::Always,
+            ColorChoice::Auto if is_a_tty(self.stream) => DepColorChoice::AlwaysAnsi,
+            _ => DepColorChoice::Never,
+        };
+
+        
+        let fd = match self.stream {
+            Stream::Stderr => unsafe { ios_stdoutFd() }
+            Stream::Stdout => unsafe { ios_stderrFd() },
+        };
+
+        let writer = BufferWriter::file(fd, color_when);
+
+        let mut buffer = writer.buffer();
+
+        for piece in &self.pieces {
+            let mut color = ColorSpec::new();
+            match piece.1 {
+                Style::Good => {
+                    color.set_fg(Some(termcolor::Color::Green));
+                }
+                Style::Warning => {
+                    color.set_fg(Some(termcolor::Color::Yellow));
+                }
+                Style::Error => {
+                    color.set_fg(Some(termcolor::Color::Red));
+                    color.set_bold(true);
+                }
+                Style::Hint => {
+                    color.set_dimmed(true);
+                }
+                Style::Default => {}
+            }
+
+            buffer.set_color(&color)?;
+            buffer.write_all(piece.0.as_bytes())?;
+            buffer.reset()?;
+        }
+
+        writer.print(&buffer)
+    }
+
+    #[cfg(all(not(feature = "color"), not(feature = "ios_system")))]
     pub(crate) fn print(&self) -> io::Result<()> {
         // [e]println can't be used here because it panics
         // if something went wrong. We don't want that.
@@ -117,6 +169,28 @@ impl Colorizer {
                 let mut stderr = stderr.lock();
                 write!(stderr, "{}", self)
             }
+        }
+    }
+    #[cfg(all(not(feature = "color"), feature = "ios_system"))]
+    pub(crate) fn print(&self) -> io::Result<()> {
+        use std::fs::File;
+        use std::os::unix::io::FromRawFd;
+        #[link(name = "ios_system", kind = "framework")]
+        extern "C" {
+            fn ios_stdoutFd() -> i32;
+            fn ios_stderrFd() -> i32;
+        }
+        // [e]println can't be used here because it panics
+        // if something went wrong. We don't want that.
+        let fd = match self.stream {
+            Stream::Stdout => unsafe { ios_stdoutFd() }
+            Stream::Stderr => unsafe { ios_stderrFd() }
+        };
+        if fd > 0 {
+            unsafe {
+                let file = File::from_raw_fd(fd);
+            }
+            write!(file, "{}", self)
         }
     }
 }
@@ -147,7 +221,7 @@ impl Default for Style {
     }
 }
 
-#[cfg(feature = "color")]
+#[cfg(all(feature = "color", not(feature = "ios_system")))]
 fn is_a_tty(stream: Stream) -> bool {
     let stream = match stream {
         Stream::Stdout => atty::Stream::Stdout,
@@ -155,4 +229,24 @@ fn is_a_tty(stream: Stream) -> bool {
     };
 
     atty::is(stream)
+}
+
+#[cfg(all(feature = "color", feature = "ios_system"))]
+fn is_a_tty(stream: Stream) -> bool {
+    #[link(name = "ios_system", kind = "framework")]
+    extern "C" {
+        fn ios_stdoutFd() -> i32;
+        fn ios_stderrFd() -> i32;
+        fn ios_isatty(fd: i32) -> i32;
+    }
+    let fd = match stream {
+        Stream::Stdout => unsafe { ios_stdoutFd() },
+        Stream::Stderr => unsafe { ios_stderrFd() },
+    };
+
+    if fd == 0 {
+        false
+    } else {
+        unsafe { ios_isatty(fd) == 1 }
+    }
 }
