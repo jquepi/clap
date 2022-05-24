@@ -34,6 +34,7 @@ pub(crate) fn safe_exit(code: i32) -> ! {
 
 #[cfg(feature = "ios_system")]
 pub(crate) fn safe_exit(code: i32) -> ! {
+    #[cfg(feature = "ios_system")]
     #[link(name = "ios_system", kind = "framework")]
     extern "C" {
         fn ios_exit(code: i32) -> !;

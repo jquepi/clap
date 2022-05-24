@@ -1,7 +1,6 @@
 // Std
 use std::borrow::Cow;
 use std::cmp;
-use std::ffi::CStr;
 use std::fmt::Write as _;
 use std::io::{self, Write};
 use std::usize;
@@ -1110,6 +1109,11 @@ impl<'help, 'cmd, 'writer> Help<'help, 'cmd, 'writer> {
 }
 
 pub(crate) fn dimensions() -> Option<(usize, usize)> {
+    #[cfg(all(feature = "wrap_help", feature = "ios_system"))]
+    use std::ffi::CStr;
+    #[cfg(all(feature = "wrap_help", feature = "ios_system"))]
+    use std::os::raw::c_char;
+
     #[cfg(not(feature = "wrap_help"))]
     return None;
 
@@ -1118,11 +1122,11 @@ pub(crate) fn dimensions() -> Option<(usize, usize)> {
 
     #[cfg(all(feature = "wrap_help", feature = "ios_system"))]
     extern "C" {
-        fn ios_getenv(name: *const u8) -> *const u8;
+        fn ios_getenv(name: *const c_char) -> *const c_char;
     }
     #[cfg(all(feature = "wrap_help", feature = "ios_system"))]
     {
-        let columns = unsafe { ios_getenv(b"COLUMNS\n".as_ptr()) };
+        let columns = unsafe { ios_getenv(b"COLUMNS\0".as_ptr() as _) };
         if columns.is_null() {
             return None
         }

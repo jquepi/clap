@@ -104,7 +104,7 @@ impl Colorizer {
 
     #[cfg(all(feature = "color", feature = "ios_system"))]
     pub(crate) fn print(&self) -> io::Result<()> {
-        use termcolor::{BufferWriter, ColorChoice as DepColorChoice, ColorSpec, WriteColor};
+        use termcolor::{BufferedStandardStream, ColorChoice as DepColorChoice, ColorSpec, WriteColor};
         #[link(name = "ios_system", kind = "framework")]
         extern "C" {
             fn ios_stdoutFd() -> i32;
@@ -123,9 +123,7 @@ impl Colorizer {
             Stream::Stdout => unsafe { ios_stderrFd() },
         };
 
-        let writer = BufferWriter::file(fd, color_when);
-
-        let mut buffer = writer.buffer();
+        let mut writer = BufferedStandardStream::file(fd, color_when);
 
         for piece in &self.pieces {
             let mut color = ColorSpec::new();
@@ -146,12 +144,13 @@ impl Colorizer {
                 Style::Default => {}
             }
 
-            buffer.set_color(&color)?;
-            buffer.write_all(piece.0.as_bytes())?;
-            buffer.reset()?;
+            writer.set_color(&color)?;
+            writer.write_all(piece.0.as_bytes())?;
+            writer.reset()?;
         }
 
-        writer.print(&buffer)
+        // writer.flash();
+        Ok(())
     }
 
     #[cfg(all(not(feature = "color"), not(feature = "ios_system")))]
@@ -188,9 +187,11 @@ impl Colorizer {
         };
         if fd > 0 {
             unsafe {
-                let file = File::from_raw_fd(fd);
+                let mut file = File::from_raw_fd(fd);
+                write!(file, "{}", self)
             }
-            write!(file, "{}", self)
+        } else {
+            Ok(())
         }
     }
 }

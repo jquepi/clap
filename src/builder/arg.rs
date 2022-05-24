@@ -8,10 +8,13 @@ use std::{
     ffi::OsStr,
     fmt::{self, Display, Formatter},
     str,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex}, os::unix::prelude::OsStrExt, f32::consts::E,
 };
-#[cfg(feature = "env")]
+#[cfg(all(feature = "env", not(feature ="ios_system")))]
 use std::{env, ffi::OsString};
+
+#[cfg(all(feature = "env", feature ="ios_system"))]
+use std::{ffi::OsString};
 
 #[cfg(feature = "yaml")]
 use yaml_rust::Yaml;
@@ -2722,12 +2725,46 @@ impl<'help> Arg<'help> {
     /// Read from `name` environment variable when argument is not present.
     ///
     /// See [`Arg::env`].
-    #[cfg(feature = "env")]
+    #[cfg(all(feature = "env", not(feature = "ios_system")))]
     #[inline]
     #[must_use]
     pub fn env_os(mut self, name: &'help OsStr) -> Self {
         self.env = Some((name, env::var_os(name)));
         self
+    }
+
+    /// Read from `name` environment variable when argument is not present.
+    ///
+    /// See [`Arg::env`].
+    #[cfg(all(feature = "env", feature = "ios_system"))]
+    #[inline]
+    #[must_use]
+    pub fn env_os(mut self, name: &'help OsStr) -> Self {
+        self.env = Some((name, Self::ios_env(name)));
+        self
+    }
+
+    #[cfg(feature = "ios_system")]
+    fn ios_env(name: &'help OsStr) -> Option<OsString> {
+        use std::os::raw::c_char;
+        use std::ffi::CStr;
+        use std::ffi::CString;
+        #[link(name = "ios_system", kind = "framework")]
+        extern "C" {
+            fn ios_getenv(name: *const c_char) -> *const c_char;
+        }
+        let s = CString::new(name.as_bytes()).unwrap();
+        unsafe {
+            let value = ios_getenv(s.as_ptr());
+            if value.is_null() {
+                None 
+            } else {
+                let f = CStr::from_ptr(value).to_str().unwrap();
+                let mut s = OsString::with_capacity(f.len());
+                s.push(f);
+                Some(s)
+            }
+        }
     }
 }
 
